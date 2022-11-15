@@ -1,12 +1,23 @@
+use std::collections::HashMap;
 use std::io;
+use std::net::Ipv4Addr;
+
+mod tcp;
 
 const IPV4: u16 = 0x0800;
 const TCP: u8 = 0x06;
 
+#[derive(Eq, PartialEq, Hash)]
+struct Connection {
+    src: (Ipv4Addr, u16),
+    dest: (Ipv4Addr, u16),
+}
+
 fn main() -> io::Result<()> {
+    let mut connections: HashMap<Connection, tcp::State> = Default::default();
+
     let nic = tun_tap::Iface::new("tun0", tun_tap::Mode::Tun).expect("failed to cr");
     let mut buf = [0u8; 1504];
-
 
     loop {
         // listen for packages
@@ -21,32 +32,32 @@ fn main() -> io::Result<()> {
         }
 
         match etherparse::Ipv4HeaderSlice::from_slice(&buf[4..nbytes]) {
-            Ok(packet) => {
-                let proto = packet.protocol();
-
+            Ok(ip_header) => {
                 // skip if no tcp
-                if proto != TCP {
+                if ip_header.protocol() != TCP {
                     continue;
                 }
 
-                let src = packet.source_addr();
-                let dest = packet.destination_addr();
-                let payload_len = packet.payload_len();
+                match etherparse::TcpHeaderSlice::from_slice(&buf[4 + ip_header.slice().len()..]) {
+                    Ok(tcp_header) => {
+                        let data_idx = 4 + ip_header.slice().len() + tcp_header.slice().len();
 
-                match etherparse::TcpHeaderSlice::from_slice(&buf[4 + packet.slice().len()..]) {
-                    Ok(p) => {
-                        let port = p.destination_port();
-                        eprintln!("RECV TCP {} -> {}:{} | {} bytes", src, dest, port, p.slice().len());
-                    },
+                        let src = (ip_header.source_addr(), tcp_header.source_port());
+                        let dest = (ip_header.destination_addr(), tcp_header.destination_port());
+
+                        connections
+                            .entry(Connection { src, dest })
+                            .or_default()
+                            .on_packet(ip_header, tcp_header, &buf[data_idx..]);
+                    }
                     Err(e) => {
                         eprintln!("IGNORING PACKET WITH ERR {:?}", e);
                     }
                 }
-            },
+            }
             Err(e) => {
                 eprintln!("IGNORING PACKET WITH ERR {:?}", e);
             }
         }
-
     }
 }

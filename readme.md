@@ -3,7 +3,16 @@
 ```Bash
 chmod +x ./run.sh
 ./run.sh
+```
+
+### Send Packages
+```
+nc 192.168.0.2 80
 ping -I tun0 192.168.0.2
+```
+### Inspect traffic
+```
+tshark -i tun0
 ```
 
 ## References

@@ -4,9 +4,6 @@ use std::net::Ipv4Addr;
 
 mod tcp;
 
-const IPV4: u16 = 0x0800;
-const TCP: u8 = 0x06;
-
 #[derive(Eq, PartialEq, Hash)]
 struct Connection {
     src: (Ipv4Addr, u16),
@@ -16,7 +13,7 @@ struct Connection {
 fn main() -> io::Result<()> {
     let mut connections: HashMap<Connection, tcp::State> = Default::default();
 
-    let nic = tun_tap::Iface::new("tun0", tun_tap::Mode::Tun).expect("failed to cr");
+    let mut nic = tun_tap::Iface::new("tun0", tun_tap::Mode::Tun).expect("failed to cr");
     let mut buf = [0u8; 1504];
 
     loop {
@@ -27,18 +24,18 @@ fn main() -> io::Result<()> {
         let eth_proto = u16::from_be_bytes([buf[2], buf[3]]);
 
         // skip if no ipv4
-        if eth_proto != IPV4 {
+        if eth_proto != etherparse::EtherType::Ipv4 as u16 {
             continue;
         }
 
         match etherparse::Ipv4HeaderSlice::from_slice(&buf[4..nbytes]) {
             Ok(ip_header) => {
                 // skip if no tcp
-                if ip_header.protocol() != TCP {
+                if ip_header.protocol() != etherparse::IpTrafficClass::Tcp as u8 {
                     continue;
                 }
 
-                match etherparse::TcpHeaderSlice::from_slice(&buf[4 + ip_header.slice().len()..]) {
+                match etherparse::TcpHeaderSlice::from_slice(&buf[4 + ip_header.slice().len()..nbytes]) {
                     Ok(tcp_header) => {
                         let data_idx = 4 + ip_header.slice().len() + tcp_header.slice().len();
 
@@ -48,7 +45,7 @@ fn main() -> io::Result<()> {
                         connections
                             .entry(Connection { src, dest })
                             .or_default()
-                            .on_packet(ip_header, tcp_header, &buf[data_idx..]);
+                            .on_packet(&mut nic, ip_header, tcp_header, &buf[data_idx..nbytes]);
                     }
                     Err(e) => {
                         eprintln!("IGNORING PACKET WITH ERR {:?}", e);

@@ -1,17 +1,49 @@
-pub enum State {
+enum State {
     Closed,
     Listen,
     SynRcvd,
     Estab,
 }
+/// State of the Send Sequence Space (RFC 793 S3.2 F4)
+struct SendSequenceSpace {
+    /// send unacknowledged
+    una: usize,
+    /// send next
+    nxt: usize,
+    /// send window
+    wnd: usize,
+    /// send urgent pointer
+    up: bool,
+    /// segment sequence number used for last window update,
+    wl1: usize,
+    /// segment acknowledgement number used for last window update,
+    wl2: usize,
+    /// initial send sequence number
+    iss: usize
+}
 
-impl Default for State {
+/// State of the Receive Sequence Space (RFC 793 S3.2 F5)
+struct RecvSequenceSpace {
+    /// receive next
+    nxt: usize,
+    /// receive window
+    wnd: usize,
+    /// receive urgent pointer
+    up: bool,
+    /// initial receive sequence number
+    irs: usize
+}
+pub struct Connection {
+    state: State
+}
+
+impl Default for Connection {
     fn default() -> Self {
-        State::Listen
+        Connection {state: State::Listen}
     }
 }
 
-impl State {
+impl Connection {
     pub fn on_packet<'a>(
         &mut self,
         nic: &mut tun_tap::Iface,
@@ -30,7 +62,7 @@ impl State {
         data.len()
         );
 
-        match *self {
+        match (*self).state {
             State::Closed => {
                 return Ok(0);
             }

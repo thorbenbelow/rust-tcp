@@ -5,13 +5,13 @@ use std::net::Ipv4Addr;
 mod tcp;
 
 #[derive(Eq, PartialEq, Hash)]
-struct Connection {
+struct Quad {
     src: (Ipv4Addr, u16),
     dest: (Ipv4Addr, u16),
 }
 
 fn main() -> io::Result<()> {
-    let mut connections: HashMap<Connection, tcp::State> = Default::default();
+    let mut connections: HashMap<Quad, tcp::Connection> = Default::default();
 
     let mut nic = tun_tap::Iface::new("tun0", tun_tap::Mode::Tun).expect("failed to cr");
     let mut buf = [0u8; 1504];
@@ -43,9 +43,9 @@ fn main() -> io::Result<()> {
                         let dest = (ip_header.destination_addr(), tcp_header.destination_port());
 
                         connections
-                            .entry(Connection { src, dest })
+                            .entry(Quad { src, dest })
                             .or_default()
-                            .on_packet(&mut nic, ip_header, tcp_header, &buf[data_idx..nbytes]);
+                            .on_packet(&mut nic, ip_header, tcp_header, &buf[data_idx..nbytes])?;
                     }
                     Err(e) => {
                         eprintln!("IGNORING PACKET WITH ERR {:?}", e);

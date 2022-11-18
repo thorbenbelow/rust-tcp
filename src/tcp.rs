@@ -7,39 +7,46 @@ enum State {
 /// State of the Send Sequence Space (RFC 793 S3.2 F4)
 struct SendSequenceSpace {
     /// send unacknowledged
-    una: usize,
+    una: u32,
     /// send next
-    nxt: usize,
+    nxt: u32,
     /// send window
-    wnd: usize,
+    wnd: u16,
     /// send urgent pointer
     up: bool,
     /// segment sequence number used for last window update,
-    wl1: usize,
+    wl1: u32,
     /// segment acknowledgement number used for last window update,
-    wl2: usize,
+    wl2: u32,
     /// initial send sequence number
-    iss: usize
+    iss: u32
 }
 
 /// State of the Receive Sequence Space (RFC 793 S3.2 F5)
 struct RecvSequenceSpace {
     /// receive next
-    nxt: usize,
+    nxt: u32,
     /// receive window
-    wnd: usize,
+    wnd: u16,
     /// receive urgent pointer
     up: bool,
     /// initial receive sequence number
-    irs: usize
+    irs: u32
 }
 pub struct Connection {
-    state: State
+    state: State,
+    recv: RecvSequenceSpace,
+    send: SendSequenceSpace,
+
 }
 
 impl Default for Connection {
     fn default() -> Self {
-        Connection {state: State::Listen}
+        Connection {
+            state: State::Listen,
+            recv: RecvSequenceSpace { nxt: 0, wnd: 0, up: false, irs: 0 },
+            send: SendSequenceSpace { una: 0, nxt: 0, wnd: 0, up: false, wl1: 0, wl2: 0, iss: 0 }
+        }
     }
 }
 
@@ -71,13 +78,26 @@ impl Connection {
                     // packet unexpectedly not SYN
                     return Ok(0);
                 }
-                // send syn ack
+
+                // keep track of sender information
+                self.recv.irs = tcp_header.sequence_number();
+                self.recv.nxt = tcp_header.sequence_number() + 1;
+                self.recv.wnd = tcp_header.window_size();
+
+                // decide on send sequence space
+                self.send.una = 0;
+                self.send.nxt = self.send.una + 1;
+                self.send.iss = 0;
+                self.send.wnd = 10;
+
+                // establish connection
                 let mut syn_ack = etherparse::TcpHeader::new(
                     tcp_header.destination_port(),
                     tcp_header.source_port(),
-                    unimplemented!(),
-                    unimplemented!(),
+                    self.send.iss,
+                    self.send.wnd,
                 );
+                syn_ack.acknowledgment_number = tcp_header.sequence_number() + 1;
                 syn_ack.syn = true;
                 syn_ack.ack = true;
 
